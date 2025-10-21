@@ -71,6 +71,7 @@ class NaturalLanguageParser:
             'has a': {'contains_character': 'a'},
             'with a': {'contains_character': 'a'},
             'first vowel': {'contains_character': 'a'},
+            'vowel': {'contains_character': 'a'},  # Added for better matching
         }
         
         # Length-based patterns
@@ -82,6 +83,7 @@ class NaturalLanguageParser:
             (r'length less than (\d+)', 'max_length'),
             (r'fewer than (\d+) characters', 'max_length'),
             (r'exactly (\d+) characters', 'min_length', 'max_length'),
+            (r'(\d+) characters long', 'min_length', 'max_length'),
         ]
         
         # Apply keyword mappings
@@ -111,29 +113,47 @@ class NaturalLanguageParser:
         
         return parsed_filters
 
-@api_view(['POST'])
+@api_view(['GET', 'POST'])
+def strings_list_handler(request):
+    """Handle both POST (create) and GET (list) for /strings"""
+    if request.method == 'POST':
+        return create_analyze_string(request)
+    elif request.method == 'GET':
+        return get_all_strings(request)
+
+@api_view(['GET', 'DELETE'])
+def strings_detail_handler(request, string_value):
+    """Handle both GET (specific) and DELETE for /strings/{string_value}"""
+    if request.method == 'GET':
+        return get_string(request, string_value)
+    elif request.method == 'DELETE':
+        return delete_string(request, string_value)
+
 def create_analyze_string(request):
-    """Create/Analyze String endpoint - POST /analyze"""
-    serializer = StringInputSerializer(data=request.data)
-    
-    if not serializer.is_valid():
-        if 'value' in serializer.errors:
-            if 'This field is required' in str(serializer.errors['value']): # type ignore 
-                return Response(
-                    {'error': 'Missing "value" field'}, 
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-            else:
-                return Response(
-                    {'error': 'Invalid data type for "value" (must be string)'},
-                    status=status.HTTP_422_UNPROCESSABLE_ENTITY
-                )
+    """Create/Analyze String endpoint"""
+    # Check if request body is valid JSON and has 'value' field
+    if not request.data or 'value' not in request.data:
         return Response(
-            {'error': 'Invalid request body'},
+            {'error': 'Missing "value" field'},
             status=status.HTTP_400_BAD_REQUEST
         )
     
-    value = serializer.validated_data['value']
+    # Check if value is a string
+    if not isinstance(request.data['value'], str):
+        return Response(
+            {'error': 'Invalid data type for "value" (must be string)'},
+            status=status.HTTP_422_UNPROCESSABLE_ENTITY
+        )
+    
+    value = request.data['value'].strip()
+    
+    # Check if value is empty
+    if not value:
+        return Response(
+            {'error': 'Value cannot be empty'},
+            status=status.HTTP_400_BAD_REQUEST
+        )
+    
     analysis_result = StringAnalyzer.analyze_string(value)
     
     # Check if string already exists
@@ -157,16 +177,14 @@ def create_analyze_string(request):
     response_serializer = StringAnalysisSerializer(analysis)
     return Response(response_serializer.data, status=status.HTTP_201_CREATED)
 
-@api_view(['GET'])
 def get_string(request, string_value):
-    """Get Specific String endpoint - GET /strings/{string_value}"""
+    """Get Specific String endpoint"""
     analysis = get_object_or_404(StringAnalysis, value=string_value)
     serializer = StringAnalysisSerializer(analysis)
     return Response(serializer.data)
 
-@api_view(['GET'])
 def get_all_strings(request):
-    """Get All Strings with Filtering endpoint - GET /strings"""
+    """Get All Strings with Filtering endpoint"""
     queryset = StringAnalysis.objects.all()
     
     # Apply filters
@@ -237,9 +255,8 @@ def get_all_strings(request):
     
     return Response(response_data)
 
-@api_view(['GET'])
 def filter_by_natural_language(request):
-    """Natural Language Filtering endpoint - GET /strings/filter/natural"""
+    """Natural Language Filtering endpoint"""
     query = request.GET.get('query')
     
     if not query:
@@ -295,54 +312,8 @@ def filter_by_natural_language(request):
     
     return Response(response_data)
 
-@api_view(['DELETE'])
 def delete_string(request, string_value):
-    """Delete String endpoint - DELETE /strings/{string_value}/delete"""
+    """Delete String endpoint"""
     analysis = get_object_or_404(StringAnalysis, value=string_value)
     analysis.delete()
     return Response(status=status.HTTP_204_NO_CONTENT)
-
-
-@api_view(['GET'])
-def api_root(request):
-    """Root endpoint with API documentation"""
-    return Response({
-        'message': 'String Analyzer API',
-        'version': '1.0',
-        'endpoints': {
-            'create_string': {
-                'method': 'POST',
-                'url': '/analyze',
-                'description': 'Create and analyze a new string',
-                'body': {'value': 'string to analyze'}
-            },
-            'get_all_strings': {
-                'method': 'GET', 
-                'url': '/strings',
-                'description': 'Get all analyzed strings with optional filtering',
-                'query_params': {
-                    'is_palindrome': 'boolean',
-                    'min_length': 'integer', 
-                    'max_length': 'integer',
-                    'word_count': 'integer',
-                    'contains_character': 'single character'
-                }
-            },
-            'get_string': {
-                'method': 'GET',
-                'url': '/strings/{string_value}',
-                'description': 'Get specific string analysis'
-            },
-            'delete_string': {
-                'method': 'DELETE',
-                'url': '/strings/{string_value}/delete',
-                'description': 'Delete a specific string'
-            },
-            'natural_language_filter': {
-                'method': 'GET',
-                'url': '/strings/filter/natural',
-                'description': 'Filter strings using natural language',
-                'query_param': 'query=natural language query'
-            }
-        }
-    })
