@@ -301,3 +301,48 @@ def delete_string(request, string_value):
     analysis = get_object_or_404(StringAnalysis, value=string_value)
     analysis.delete()
     return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+@api_view(['GET'])
+def api_root(request):
+    """Root endpoint with API documentation"""
+    return Response({
+        'message': 'String Analyzer API',
+        'version': '1.0',
+        'endpoints': {
+            'create_string': {
+                'method': 'POST',
+                'url': '/analyze',
+                'description': 'Create and analyze a new string',
+                'body': {'value': 'string to analyze'}
+            },
+            'get_all_strings': {
+                'method': 'GET', 
+                'url': '/strings',
+                'description': 'Get all analyzed strings with optional filtering',
+                'query_params': {
+                    'is_palindrome': 'boolean',
+                    'min_length': 'integer', 
+                    'max_length': 'integer',
+                    'word_count': 'integer',
+                    'contains_character': 'single character'
+                }
+            },
+            'get_string': {
+                'method': 'GET',
+                'url': '/strings/{string_value}',
+                'description': 'Get specific string analysis'
+            },
+            'delete_string': {
+                'method': 'DELETE',
+                'url': '/strings/{string_value}/delete',
+                'description': 'Delete a specific string'
+            },
+            'natural_language_filter': {
+                'method': 'GET',
+                'url': '/strings/filter/natural',
+                'description': 'Filter strings using natural language',
+                'query_param': 'query=natural language query'
+            }
+        }
+    })
