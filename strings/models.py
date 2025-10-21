@@ -1,7 +1,4 @@
 from django.db import models
-import json 
-
-# Create your models here.
 
 class StringAnalysis(models.Model):
     id = models.CharField(max_length=64, primary_key=True)  # SHA-256 hash

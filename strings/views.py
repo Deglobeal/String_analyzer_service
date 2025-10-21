@@ -3,23 +3,122 @@ from rest_framework.decorators import api_view
 from rest_framework.response import Response
 from django.db.models import Q
 from django.shortcuts import get_object_or_404
+import hashlib
+from collections import Counter
+import re
 
 from .models import StringAnalysis
-from .serializers import (
-    StringAnalysisSerializer, 
-    StringInputSerializer,
-    FilterResponseSerializer
-)
-from .utils import StringAnalyzer, NaturalLanguageParser
+from .serializers import StringAnalysisSerializer, StringInputSerializer
+
+class StringAnalyzer:
+    @staticmethod
+    def analyze_string(value: str):
+        """Analyze a string and return all computed properties."""
+        
+        # Basic properties
+        length = len(value)
+        
+        # Palindrome check (case-insensitive, ignore non-alphanumeric)
+        cleaned_string = re.sub(r'[^a-zA-Z0-9]', '', value.lower())
+        is_palindrome = cleaned_string == cleaned_string[::-1] if cleaned_string else True
+        
+        # Unique characters count
+        unique_characters = len(set(value))
+        
+        # Word count (split by whitespace)
+        word_count = len(value.split())
+        
+        # SHA-256 hash
+        sha256_hash = hashlib.sha256(value.encode('utf-8')).hexdigest()
+        
+        # Character frequency map
+        character_frequency_map = dict(Counter(value))
+        
+        return {
+            'id': sha256_hash,
+            'value': value,
+            'properties': {
+                'length': length,
+                'is_palindrome': is_palindrome,
+                'unique_characters': unique_characters,
+                'word_count': word_count,
+                'sha256_hash': sha256_hash,
+                'character_frequency_map': character_frequency_map
+            }
+        }
+
+class NaturalLanguageParser:
+    @staticmethod
+    def parse_query(query: str):
+        """Parse natural language query into filter parameters."""
+        query = query.lower().strip()
+        parsed_filters = {}
+        
+        # Map of keywords to filters
+        keyword_mappings = {
+            'palindrome': {'is_palindrome': True},
+            'palindromic': {'is_palindrome': True},
+            'single word': {'word_count': 1},
+            'one word': {'word_count': 1},
+            'two words': {'word_count': 2},
+            'three words': {'word_count': 3},
+            'contains z': {'contains_character': 'z'},
+            'containing z': {'contains_character': 'z'},
+            'has z': {'contains_character': 'z'},
+            'with z': {'contains_character': 'z'},
+            'contains a': {'contains_character': 'a'},
+            'containing a': {'contains_character': 'a'},
+            'has a': {'contains_character': 'a'},
+            'with a': {'contains_character': 'a'},
+            'first vowel': {'contains_character': 'a'},
+        }
+        
+        # Length-based patterns
+        length_patterns = [
+            (r'longer than (\d+) characters', 'min_length'),
+            (r'length greater than (\d+)', 'min_length'),
+            (r'more than (\d+) characters', 'min_length'),
+            (r'shorter than (\d+) characters', 'max_length'),
+            (r'length less than (\d+)', 'max_length'),
+            (r'fewer than (\d+) characters', 'max_length'),
+            (r'exactly (\d+) characters', 'min_length', 'max_length'),
+        ]
+        
+        # Apply keyword mappings
+        for keyword, filters in keyword_mappings.items():
+            if keyword in query:
+                parsed_filters.update(filters)
+        
+        # Apply length patterns
+        for pattern, *filter_types in length_patterns:
+            matches = re.search(pattern, query)
+            if matches:
+                length_value = int(matches.group(1))
+                for filter_type in filter_types:
+                    if filter_type == 'min_length':
+                        parsed_filters['min_length'] = length_value + 1
+                    elif filter_type == 'max_length':
+                        parsed_filters['max_length'] = length_value - 1
+                    else:
+                        parsed_filters['min_length'] = length_value
+                        parsed_filters['max_length'] = length_value
+        
+        # Word count patterns
+        word_count_pattern = r'(\d+) words?'
+        word_matches = re.search(word_count_pattern, query)
+        if word_matches:
+            parsed_filters['word_count'] = int(word_matches.group(1))
+        
+        return parsed_filters
 
 @api_view(['POST'])
 def create_analyze_string(request):
-    """Create/Analyze String endpoint"""
+    """Create/Analyze String endpoint - POST /analyze"""
     serializer = StringInputSerializer(data=request.data)
     
     if not serializer.is_valid():
         if 'value' in serializer.errors:
-            if 'This field is required' in str(serializer.errors['value']):
+            if 'This field is required' in str(serializer.errors['value']): # type ignore 
                 return Response(
                     {'error': 'Missing "value" field'}, 
                     status=status.HTTP_400_BAD_REQUEST
@@ -60,14 +159,14 @@ def create_analyze_string(request):
 
 @api_view(['GET'])
 def get_string(request, string_value):
-    """Get Specific String endpoint"""
+    """Get Specific String endpoint - GET /strings/{string_value}"""
     analysis = get_object_or_404(StringAnalysis, value=string_value)
     serializer = StringAnalysisSerializer(analysis)
     return Response(serializer.data)
 
 @api_view(['GET'])
 def get_all_strings(request):
-    """Get All Strings with Filtering endpoint"""
+    """Get All Strings with Filtering endpoint - GET /strings"""
     queryset = StringAnalysis.objects.all()
     
     # Apply filters
@@ -140,7 +239,7 @@ def get_all_strings(request):
 
 @api_view(['GET'])
 def filter_by_natural_language(request):
-    """Natural Language Filtering endpoint"""
+    """Natural Language Filtering endpoint - GET /strings/filter/natural"""
     query = request.GET.get('query')
     
     if not query:
@@ -198,7 +297,7 @@ def filter_by_natural_language(request):
 
 @api_view(['DELETE'])
 def delete_string(request, string_value):
-    """Delete String endpoint"""
+    """Delete String endpoint - DELETE /strings/{string_value}/delete"""
     analysis = get_object_or_404(StringAnalysis, value=string_value)
     analysis.delete()
     return Response(status=status.HTTP_204_NO_CONTENT)
