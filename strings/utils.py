@@ -37,15 +37,19 @@ def compute_string_properties(value: str) -> Dict[str, Any]:
 def parse_natural_language_query(query: str) -> Dict[str, Any]:
     """Parse natural language query into filters."""
     filters = {}
-    query = query.lower()
+    query = query.lower().strip()
     
     # Parse word count
-    if 'single word' in query :
+    if 'single word' in query:
         filters['word_count'] = 1
     elif 'two words' in query:
         filters['word_count'] = 2
     elif 'three words' in query:
         filters['word_count'] = 3
+    elif 'four words' in query:
+        filters['word_count'] = 4
+    elif 'five words' in query:
+        filters['word_count'] = 5
     
     # Parse palindrome
     if 'palindromic' in query or 'palindrome' in query:
@@ -68,6 +72,12 @@ def parse_natural_language_query(query: str) -> Dict[str, Any]:
         match = re.search(r'less than\s+(\d+)', query)
         if match:
             filters['max_length'] = int(match.group(1)) - 1
+    elif 'exactly' in query and 'characters' in query:
+        match = re.search(r'exactly\s+(\d+)\s+characters', query)
+        if match:
+            length = int(match.group(1))
+            filters['min_length'] = length
+            filters['max_length'] = length
     
     # Parse character containment
     char_match = re.search(r'contain[s]?\s+the letter\s+([a-zA-Z])', query)
@@ -75,6 +85,8 @@ def parse_natural_language_query(query: str) -> Dict[str, Any]:
         char_match = re.search(r'contain[s]?\s+([a-zA-Z])', query)
     if not char_match:
         char_match = re.search(r'with the letter\s+([a-zA-Z])', query)
+    if not char_match:
+        char_match = re.search(r'has the letter\s+([a-zA-Z])', query)
     if char_match:
         filters['contains_character'] = char_match.group(1).lower()
     
@@ -93,6 +105,11 @@ def parse_natural_language_query(query: str) -> Dict[str, Any]:
     # Handle "all" queries
     if 'all strings' in query and not filters:
         # Return empty filters to get all strings
+        pass
+    
+    # Handle empty queries or "show me all strings"
+    if not query or query in ['all', 'all strings', 'show all', 'show me all']:
+        # Return empty filters
         pass
     
     return filters
