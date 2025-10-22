@@ -1,32 +1,87 @@
-# strings/utils.py
 import hashlib
 import re
 from collections import Counter
+from typing import Dict, Any
 
-def compute_properties(value: str) -> dict:
-    if not isinstance(value, str):
-        raise TypeError("value must be a string")
-
-    # preserve original string for output but computations are case-insensitive for palindrome
-    normalized = value
-    length = len(normalized)
-    # palindrome check: remove whitespace? The spec: "case-insensitive", not necessarily remove spaces.
-    # We'll do case-insensitive and ignore surrounding whitespace, but keep internal spaces (common expectation).
-    normalized_for_pal = normalized.strip().lower()
-    is_palindrome = normalized_for_pal == normalized_for_pal[::-1]
-    # unique characters (distinct code points)
-    unique_characters = len(set(normalized))
-    # word count: split on any whitespace
-    word_count = 0 if normalized.strip() == "" else len(re.findall(r"\S+", normalized))
-    # sha256
-    sha256_hash = hashlib.sha256(normalized.encode('utf-8')).hexdigest()
-    # frequency map (character by character, keep case as-is)
-    freq = dict(Counter(normalized))
+def compute_string_properties(value: str) -> Dict[str, Any]:
+    """Compute all properties for a given string."""
+    
+    # Basic properties
+    length = len(value)
+    
+    # Palindrome check (case-insensitive)
+    cleaned_value = re.sub(r'[^a-zA-Z0-9]', '', value.lower())
+    is_palindrome = cleaned_value == cleaned_value[::-1] if cleaned_value else False
+    
+    # Unique characters count
+    unique_characters = len(set(value))
+    
+    # Word count (split by whitespace)
+    word_count = len(value.split())
+    
+    # SHA256 hash
+    sha256_hash = hashlib.sha256(value.encode('utf-8')).hexdigest()
+    
+    # Character frequency map
+    character_frequency_map = dict(Counter(value))
+    
     return {
-        "length": length,
-        "is_palindrome": is_palindrome,
-        "unique_characters": unique_characters,
-        "word_count": word_count,
-        "sha256_hash": sha256_hash,
-        "character_frequency_map": freq,
+        'length': length,
+        'is_palindrome': is_palindrome,
+        'unique_characters': unique_characters,
+        'word_count': word_count,
+        'sha256_hash': sha256_hash,
+        'character_frequency_map': character_frequency_map
     }
+
+def parse_natural_language_query(query: str) -> Dict[str, Any]:
+    """Parse natural language query into filters."""
+    query = query.lower().strip()
+    filters = {}
+    
+    # Parse word count
+    if 'single word' in query or 'one word' in query:
+        filters['word_count'] = 1
+    elif 'two words' in query:
+        filters['word_count'] = 2
+    elif 'three words' in query:
+        filters['word_count'] = 3
+    
+    # Parse palindrome
+    if 'palindromic' in query or 'palindrome' in query:
+        filters['is_palindrome'] = True
+    
+    # Parse length filters
+    if 'longer than' in query:
+        match = re.search(r'longer than\s+(\d+)', query)
+        if match:
+            filters['min_length'] = int(match.group(1)) + 1
+    elif 'shorter than' in query:
+        match = re.search(r'shorter than\s+(\d+)', query)
+        if match:
+            filters['max_length'] = int(match.group(1)) - 1
+    elif 'length' in query and 'greater' in query:
+        match = re.search(r'greater than\s+(\d+)', query)
+        if match:
+            filters['min_length'] = int(match.group(1)) + 1
+    
+    # Parse character containment
+    char_match = re.search(r'contain[s]?\s+the letter\s+([a-zA-Z])', query)
+    if not char_match:
+        char_match = re.search(r'contain[s]?\s+([a-zA-Z])', query)
+    if char_match:
+        filters['contains_character'] = char_match.group(1).lower()
+    
+    # Handle vowel detection
+    if 'first vowel' in query or 'vowel a' in query:
+        filters['contains_character'] = 'a'
+    elif 'vowel e' in query:
+        filters['contains_character'] = 'e'
+    elif 'vowel i' in query:
+        filters['contains_character'] = 'i'
+    elif 'vowel o' in query:
+        filters['contains_character'] = 'o'
+    elif 'vowel u' in query:
+        filters['contains_character'] = 'u'
+    
+    return filters
