@@ -19,7 +19,7 @@ def compute_string_properties(value: str) -> Dict[str, Any]:
     # Word count (split by whitespace)
     word_count = len(value.split())
     
-    # SHA256 hash
+    # SHA256 hash - MUST use UTF-8 encoding
     sha256_hash = hashlib.sha256(value.encode('utf-8')).hexdigest()
     
     # Character frequency map
@@ -35,81 +35,80 @@ def compute_string_properties(value: str) -> Dict[str, Any]:
     }
 
 def parse_natural_language_query(query: str) -> Dict[str, Any]:
-    """Parse natural language query into filters."""
-    filters = {}
+    """Parse natural language query into filters using keyword detection."""
     query = query.lower().strip()
+    filters = {}
     
-    # Parse word count
-    if 'single word' in query:
+    print(f"🔍 Parsing query: '{query}'")  # Debug
+    
+    # Word count detection
+    if "single word" in query or "one word" in query:
         filters['word_count'] = 1
-    elif 'two words' in query:
+        print("  → Detected: word_count = 1")
+    
+    if "two words" in query:
         filters['word_count'] = 2
-    elif 'three words' in query:
+        print("  → Detected: word_count = 2")
+    
+    if "three words" in query:
         filters['word_count'] = 3
-    elif 'four words' in query:
-        filters['word_count'] = 4
-    elif 'five words' in query:
-        filters['word_count'] = 5
+        print("  → Detected: word_count = 3")
     
-    # Parse palindrome
-    if 'palindromic' in query or 'palindrome' in query:
+    # Palindrome detection
+    if "palindromic" in query or "palindrome" in query:
         filters['is_palindrome'] = True
+        print("  → Detected: is_palindrome = True")
     
-    # Parse length filters
-    if 'longer than' in query:
-        match = re.search(r'longer than\s+(\d+)', query)
+    # Length filters
+    if "longer than" in query or "greater than" in query:
+        # Extract number after "longer than" or "greater than"
+        match = re.search(r'(?:longer than|greater than)\s+(\d+)', query)
         if match:
-            filters['min_length'] = int(match.group(1)) + 1
-    elif 'shorter than' in query:
-        match = re.search(r'shorter than\s+(\d+)', query)
-        if match:
-            filters['max_length'] = int(match.group(1)) - 1
-    elif 'length' in query and 'greater' in query:
-        match = re.search(r'greater than\s+(\d+)', query)
-        if match:
-            filters['min_length'] = int(match.group(1)) + 1
-    elif 'length' in query and 'less' in query:
-        match = re.search(r'less than\s+(\d+)', query)
-        if match:
-            filters['max_length'] = int(match.group(1)) - 1
-    elif 'exactly' in query and 'characters' in query:
-        match = re.search(r'exactly\s+(\d+)\s+characters', query)
-        if match:
-            length = int(match.group(1))
-            filters['min_length'] = length
-            filters['max_length'] = length
+            min_length = int(match.group(1))
+            filters['min_length'] = min_length + 1
+            print(f"  → Detected: min_length = {min_length + 1}")
     
-    # Parse character containment
-    char_match = re.search(r'contain[s]?\s+the letter\s+([a-zA-Z])', query)
-    if not char_match:
-        char_match = re.search(r'contain[s]?\s+([a-zA-Z])', query)
-    if not char_match:
-        char_match = re.search(r'with the letter\s+([a-zA-Z])', query)
-    if not char_match:
-        char_match = re.search(r'has the letter\s+([a-zA-Z])', query)
-    if char_match:
-        filters['contains_character'] = char_match.group(1).lower()
+    if "shorter than" in query or "less than" in query:
+        # Extract number after "shorter than" or "less than"
+        match = re.search(r'(?:shorter than|less than)\s+(\d+)', query)
+        if match:
+            max_length = int(match.group(1))
+            filters['max_length'] = max_length - 1
+            print(f"  → Detected: max_length = {max_length - 1}")
     
-    # Handle vowel detection
-    if 'first vowel' in query or 'vowel a' in query:
+    # Character containment
+    if "containing the letter" in query:
+        match = re.search(r'containing the letter\s+([a-zA-Z])', query)
+        if match:
+            filters['contains_character'] = match.group(1).lower()
+            print(f"  → Detected: contains_character = '{match.group(1).lower()}'")
+    
+    if "containing the letter" not in query and "contain" in query:
+        # Look for pattern like "contains a" or "containing e"
+        match = re.search(r'contain[s]?[\w\s]*([a-zA-Z])', query)
+        if match:
+            filters['contains_character'] = match.group(1).lower()
+            print(f"  → Detected: contains_character = '{match.group(1).lower()}'")
+    
+    # First vowel detection
+    if "first vowel" in query:
         filters['contains_character'] = 'a'
-    elif 'vowel e' in query:
-        filters['contains_character'] = 'e'
-    elif 'vowel i' in query:
-        filters['contains_character'] = 'i'
-    elif 'vowel o' in query:
-        filters['contains_character'] = 'o'
-    elif 'vowel u' in query:
-        filters['contains_character'] = 'u'
+        print("  → Detected: first vowel → contains_character = 'a'")
     
-    # Handle "all" queries
-    if 'all strings' in query and not filters:
-        # Return empty filters to get all strings
-        pass
+    # Specific vowel detection
+    vowel_mapping = {
+        'vowel a': 'a',
+        'vowel e': 'e', 
+        'vowel i': 'i',
+        'vowel o': 'o',
+        'vowel u': 'u'
+    }
     
-    # Handle empty queries or "show me all strings"
-    if not query or query in ['all', 'all strings', 'show all', 'show me all']:
-        # Return empty filters
-        pass
+    for vowel_pattern, vowel_char in vowel_mapping.items():
+        if vowel_pattern in query:
+            filters['contains_character'] = vowel_char
+            print(f"  → Detected: {vowel_pattern} → contains_character = '{vowel_char}'")
+            break
     
+    print(f"  → Final filters: {filters}")
     return filters

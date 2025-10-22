@@ -11,6 +11,23 @@ from .models import StringAnalysis
 from .serializers import StringAnalysisSerializer
 from .utils import compute_string_properties, parse_natural_language_query
 
+from django.http import JsonResponse
+
+def root_view(request):
+    """Simple root view to handle base URL"""
+    return JsonResponse({
+        "message": "String Analyzer Service is running",
+        "endpoints": {
+            "POST /strings": "Create and analyze a string",
+            "GET /strings/{string_value}": "Get specific string analysis", 
+            "GET /strings": "Get all strings with filters",
+            "GET /strings/filter-by-natural-language": "Filter using natural language",
+            "DELETE /strings/{string_value}": "Delete string analysis"
+        }
+    })
+
+
+
 class StringsView(APIView):
     """Handle both POST and GET for /strings endpoint"""
     
@@ -181,6 +198,8 @@ def natural_language_filter(request):
             status=status.HTTP_400_BAD_REQUEST
         )
     
+    print(f"🎯 Natural Language Query: '{query}'")
+    
     try:
         parsed_filters = parse_natural_language_query(query)
         
@@ -194,21 +213,30 @@ def natural_language_filter(request):
         
         # Apply filters
         analyses = StringAnalysis.objects.all()
+        initial_count = analyses.count()
         
         if 'is_palindrome' in parsed_filters:
             analyses = analyses.filter(is_palindrome=parsed_filters['is_palindrome'])
+            print(f"  Applied is_palindrome filter: {parsed_filters['is_palindrome']}")
         
         if 'min_length' in parsed_filters:
             analyses = analyses.filter(length__gte=parsed_filters['min_length'])
+            print(f"  Applied min_length filter: {parsed_filters['min_length']}")
         
         if 'max_length' in parsed_filters:
             analyses = analyses.filter(length__lte=parsed_filters['max_length'])
+            print(f"  Applied max_length filter: {parsed_filters['max_length']}")
         
         if 'word_count' in parsed_filters:
             analyses = analyses.filter(word_count=parsed_filters['word_count'])
+            print(f"  Applied word_count filter: {parsed_filters['word_count']}")
         
         if 'contains_character' in parsed_filters:
             analyses = analyses.filter(value__icontains=parsed_filters['contains_character'])
+            print(f"  Applied contains_character filter: '{parsed_filters['contains_character']}'")
+        
+        final_count = analyses.count()
+        print(f"  Results: {final_count}/{initial_count} strings match")
         
         serializer = StringAnalysisSerializer(analyses, many=True)
         
@@ -222,6 +250,7 @@ def natural_language_filter(request):
         })
         
     except Exception as e:
+        print(f"❌ Error in natural language filter: {e}")
         return Response(
             {'error': f'Unable to parse natural language query: {str(e)}'}, 
             status=status.HTTP_400_BAD_REQUEST
