@@ -255,3 +255,5 @@ def natural_language_filter(request):
             {'error': f'Unable to parse natural language query: {str(e)}'}, 
             status=status.HTTP_400_BAD_REQUEST
         )
+
+        

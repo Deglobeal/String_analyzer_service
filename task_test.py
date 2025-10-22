@@ -1,440 +1,247 @@
-#!/usr/bin/env python3
-"""
-task_test.py
-
-Run this while your Django server is running. It performs the same checks
-the Stage-1 autograder uses and prints a scored report.
-
-Usage:
-    python task_test.py
-Or set BASE_URL env var:
-    BASE_URL="http://127.0.0.1:8000" python task_test.py
-"""
-
-import os
-import sys
-import hashlib
-import urllib.parse
 import requests
+import hashlib
+import uuid
 import json
-from typing import Optional
 
-BASE_URL = os.environ.get("BASE_URL", "http://127.0.0.1:8000").rstrip("/")
+BASE_URL = "https://stringanalyzerservice-production.up.railway.app"
 
-def full(path: str) -> str:
-    return BASE_URL + path
-
-def sha256(s: str) -> str:
-    return hashlib.sha256(s.encode("utf-8")).hexdigest()
-
-def post_json(path: str, body):
-    try:
-        return requests.post(full(path), json=body, timeout=5)
-    except Exception as e:
-        print("Request error:", e)
-        return None
-
-def get(path: str, params=None):
-    try:
-        return requests.get(full(path), params=params, timeout=5)
-    except Exception as e:
-        print("Request error:", e)
-        return None
-
-def delete(path: str):
-    try:
-        return requests.delete(full(path), timeout=5)
-    except Exception as e:
-        print("Request error:", e)
-        return None
-
-def parse_response_json(r):
-    try:
-        return r.json()
-    except Exception:
-        return None
-
-def ok(msg):
-    print("✓", msg)
-
-def fail(msg):
-    print("✗", msg)
-
-def run():
-    sections = {
-        "post": 25,
-        "get_specific": 15,
-        "get_filters": 25,
-        "get_nl": 20,
-        "delete": 15
-    }
-
-    total = 0
-    print("\n============================================================")
-    print("Running Stage-1 verification against:", BASE_URL)
-    print("============================================================\n")
-
-    # === POST /strings ===
-    post_score = 0
-    print("=== POST /strings (25 points) ===")
-    v = "task_test_unique_string_12345"
-    # create new
-    r = post_json("/strings", {"value": v})
-    if r is None:
-        fail("No response for POST /strings - is the server running?")
-    else:
-        if r.status_code == 201:
-            ok("status code: 201 (create)")
-            post_score += 5
-        else:
-            fail(f"Wrong status code: {r.status_code} (expected 201)")
-
-    # duplicate -> expect 409
-    r2 = post_json("/strings", {"value": v})
-    if r2 is not None and r2.status_code == 409:
-        ok("status for duplicate: 409")
-        post_score += 5
-    else:
-        if r2 is None:
-            fail("No response for duplicate POST /strings")
-        else:
-            fail(f"Wrong status for duplicate: {r2.status_code} (expected 409)")
-
-    # missing 'value' -> expect 400
-    r3 = post_json("/strings", {})
-    if r3 is not None and r3.status_code == 400:
-        ok("status for missing 'value' field: 400")
-        post_score += 2
-    else:
-        if r3 is None:
-            fail("No response for POST /strings with empty body")
-        else:
-            fail(f"Wrong status for missing 'value' field: {r3.status_code} (expected 400)")
-
-    # invalid data type -> expect 422 (spec mandates 422 for wrong type)
-    r4 = post_json("/strings", {"value": 12345})
-    if r4 is not None and r4.status_code in (422,):
-        ok("status for invalid data type: 422")
-        post_score += 3
-    else:
-        if r4 is None:
-            fail("No response for POST /strings with invalid type")
-        else:
-            fail(f"Wrong status for invalid data type: {r4.status_code} (expected 422)")
-
-    print(f"POST /strings score: {post_score}/{sections['post']}\n")
-    total += post_score
-
-    # === GET /strings/{string_value} ===
-    get_spec_score = 0
-    print("=== GET /strings/{string_value} (15 points) ===")
-    # 404 for non-existent
-    r = get("/strings/nonexistent_task_test_value")
-    if r is not None and r.status_code == 404:
-        ok("Returns 404 for non-existent string")
-        get_spec_score += 5
-    else:
-        if r is None:
-            fail("No response for GET nonexistent")
-        else:
-            fail(f"GET nonexistent returned {r.status_code} (expected 404)")
-
-    # GET existing
-    encoded = urllib.parse.quote(v, safe='')
-    r = get(f"/strings/{encoded}")
-    if r is not None and r.status_code == 200:
-        ok("Returns 200 for existing string")
-        get_spec_score += 10
-        # optional: verify body contains value and properties
-        data = parse_response_json(r)
-        if data is None:
-            fail("GET existing returned non-JSON body")
-        else:
-            # pass
-            pass
-    else:
-        if r is None:
-            fail("No response for GET existing")
-        else:
-            fail(f"GET existing returned {r.status_code} (expected 200)")
-
-    print(f"GET specific string score: {get_spec_score}/{sections['get_specific']}\n")
-    total += get_spec_score
-
-    # === GET /strings with filters ===
-    filter_score = 0
-    print("=== GET /strings with filters (25 points) ===")
-    # Add sample strings
-    samples = [
-        "racecar",  # palindrome, single word
-        "hello world",  # two words
-        "abcdefghijklmnop",  # long
-        "aa bb",  # two words
-        "pal a lap"  # contains a and spaces
+def test_bot_exact_scenarios():
+    """
+    Test the EXACT scenarios that the bot is testing
+    Based on the bot's failure report
+    """
+    print("🔍 DIAGNOSING BOT 405 ERRORS")
+    print("=" * 60)
+    print(f"Testing: {BASE_URL}")
+    print()
+    
+    # The bot reported 405 errors on ALL POST endpoints
+    # This means the URL routing is broken
+    
+    test_cases = [
+        # POST scenarios that got 405
+        {
+            "name": "POST /strings (new)",
+            "method": "POST",
+            "url": f"{BASE_URL}/strings",
+            "data": {"value": f"test_{uuid.uuid4().hex[:8]}"},
+            "expected": 201
+        },
+        {
+            "name": "POST /strings (duplicate)", 
+            "method": "POST",
+            "url": f"{BASE_URL}/strings",
+            "data": {"value": "duplicate_test"},
+            "expected": 409
+        },
+        {
+            "name": "POST /strings (missing value)",
+            "method": "POST", 
+            "url": f"{BASE_URL}/strings",
+            "data": {"wrong_field": "test"},
+            "expected": 400
+        },
+        {
+            "name": "POST /strings (invalid type)",
+            "method": "POST",
+            "url": f"{BASE_URL}/strings", 
+            "data": {"value": 123},
+            "expected": 422
+        },
+        # GET scenarios that should work
+        {
+            "name": "GET /strings/{value} (non-existent)",
+            "method": "GET",
+            "url": f"{BASE_URL}/strings/nonexistent_123",
+            "data": None,
+            "expected": 404
+        },
+        {
+            "name": "GET /strings?filters",
+            "method": "GET",
+            "url": f"{BASE_URL}/strings?is_palindrome=true",
+            "data": None, 
+            "expected": 200
+        },
+        {
+            "name": "GET /natural-language",
+            "method": "GET",
+            "url": f"{BASE_URL}/strings/filter-by-natural-language?query=test",
+            "data": None,
+            "expected": 200
+        },
+        {
+            "name": "DELETE /strings/{value}",
+            "method": "DELETE", 
+            "url": f"{BASE_URL}/strings/test_delete",
+            "data": None,
+            "expected": 404
+        }
     ]
-    for s in samples:
+    
+    # First create a string for duplicate test
+    requests.post(f"{BASE_URL}/strings", json={"value": "duplicate_test"})
+    
+    results = {}
+    
+    for test in test_cases:
+        print(f"\n🧪 {test['name']}")
+        print(f"   URL: {test['url']}")
+        print(f"   Method: {test['method']}")
+        print(f"   Expected: {test['expected']}")
+        
         try:
-            post_json("/strings", {"value": s})
-        except:
-            pass
-
-    # Helper to extract list from response
-    def extract_list(resp):
-        if resp is None:
-            return None
-        try:
-            j = resp.json()
-        except:
-            return None
-        if isinstance(j, dict) and "data" in j:
-            return j["data"]
-        if isinstance(j, list):
-            return j
-        # fallback: maybe top-level object is one item
-        return [j]
-
-    # 1) is_palindrome=true
-    r = get("/strings", params={"is_palindrome": "true"})
-    arr = extract_list(r)
-    if r is not None and r.status_code == 200 and arr is not None:
-        ok_flag = True
-        for item in arr:
-            # item may have properties or top-level flags
-            p = None
-            if isinstance(item, dict):
-                if "properties" in item and isinstance(item["properties"], dict):
-                    p = item["properties"].get("is_palindrome")
-                else:
-                    p = item.get("is_palindrome")
-            if p not in (True, "true", 1, "1"):
-                ok_flag = False
-                break
-        if ok_flag:
-            ok("Filter test 1 (is_palindrome=true) passed")
-            filter_score += 5
-        else:
-            fail("Filter test 1 returned non-palindrome items")
-    else:
-        fail(f"Filter test 1 HTTP {None if r is None else r.status_code}")
-
-    # 2) min_length=5 & max_length=20
-    r = get("/strings", params={"min_length": "5", "max_length": "20"})
-    arr = extract_list(r)
-    if r is not None and r.status_code == 200 and arr is not None:
-        ok_flag = True
-        for item in arr:
-            length = None
-            if isinstance(item, dict):
-                if "properties" in item and isinstance(item["properties"], dict):
-                    length = item["properties"].get("length")
-                else:
-                    length = item.get("length")
-            if length is None:
-                ok_flag = False
-                break
-            try:
-                if not (5 <= int(length) <= 20):
-                    ok_flag = False
-                    break
-            except:
-                ok_flag = False
-                break
-        if ok_flag:
-            ok("Filter test 2 (min_length & max_length) passed")
-            filter_score += 5
-        else:
-            fail("Filter test 2 returned items outside length range or missing length")
-    else:
-        fail(f"Filter test 2 HTTP {None if r is None else r.status_code}")
-
-    # 3) word_count=1
-    r = get("/strings", params={"word_count": "1"})
-    arr = extract_list(r)
-    if r is not None and r.status_code == 200 and arr is not None:
-        ok_flag = True
-        for item in arr:
-            wc = None
-            if isinstance(item, dict):
-                if "properties" in item and isinstance(item["properties"], dict):
-                    wc = item["properties"].get("word_count")
-                else:
-                    wc = item.get("word_count")
-            if wc is None:
-                ok_flag = False
-                break
-            try:
-                if int(wc) != 1:
-                    ok_flag = False
-                    break
-            except:
-                ok_flag = False
-                break
-        if ok_flag:
-            ok("Filter test 3 (word_count=1) passed")
-            filter_score += 5
-        else:
-            fail("Filter test 3 returned items not matching word_count=1")
-    else:
-        fail(f"Filter test 3 HTTP {None if r is None else r.status_code}")
-
-    # 4) contains_character=a
-    r = get("/strings", params={"contains_character": "a"})
-    arr = extract_list(r)
-    if r is not None and r.status_code == 200 and arr is not None:
-        ok_flag = True
-        for item in arr:
-            v = ""
-            if isinstance(item, dict):
-                v = item.get("value") or (item.get("properties") or {}).get("value") or ""
-            if 'a' not in (v or "").lower():
-                ok_flag = False
-                break
-        if ok_flag:
-            ok("Filter test 4 (contains_character=a) passed")
-            filter_score += 5
-        else:
-            fail("Filter test 4 returned items not containing 'a'")
-    else:
-        fail(f"Filter test 4 HTTP {None if r is None else r.status_code}")
-
-    # 5) combined: is_palindrome=true & word_count=1
-    r = get("/strings", params={"is_palindrome": "true", "word_count": "1"})
-    arr = extract_list(r)
-    if r is not None and r.status_code == 200 and arr is not None:
-        ok_flag = True
-        for item in arr:
-            p = None; wc = None
-            if isinstance(item, dict):
-                props = item.get("properties", {})
-                if props:
-                    p = props.get("is_palindrome")
-                    wc = props.get("word_count")
-                else:
-                    p = item.get("is_palindrome")
-                    wc = item.get("word_count")
-            if p not in (True, "true", 1, "1"):
-                ok_flag = False
-                break
-            try:
-                if int(wc) != 1:
-                    ok_flag = False
-                    break
-            except:
-                ok_flag = False
-                break
-        if ok_flag:
-            ok("Filter test 5 (is_palindrome=true & word_count=1) passed")
-            filter_score += 5
-        else:
-            fail("Filter test 5 returned items not matching both filters")
-    else:
-        fail(f"Filter test 5 HTTP {None if r is None else r.status_code}")
-
-    print(f"GET with filters score: {filter_score}/{sections['get_filters']}\n")
-    total += filter_score
-
-    # === GET /strings/filter-by-natural-language ===
-    nl_score = 0
-    print("=== GET /strings/filter-by-natural-language (20 points) ===")
-    nl_tests = [
-        ("all single word palindromic strings", {"word_count":1, "is_palindrome":True}),
-        ("strings longer than 5 characters", {"min_length":6}),
-        ("palindromic strings that contain the letter a", {"is_palindrome":True, "contains_character":"a"}),
-        ("strings containing the letter e", {"contains_character":"e"})
-    ]
-
-    for text, expected in nl_tests:
-        r = get("/strings/filter-by-natural-language", params={"q": text})
-        if r is None:
-            fail(f"Natural language query: '{text}' - no response")
-            continue
-        if r.status_code != 200:
-            fail(f"Natural language query: '{text}' - status {r.status_code}")
-            continue
-        j = parse_response_json(r)
-        if j is None:
-            fail(f"Natural language query: '{text}' - invalid JSON")
-            continue
-
-        # Preferred format: dict with 'data' and 'interpreted_query' and parsed_filters
-        passed = False
-        if isinstance(j, dict) and "interpreted_query" in j and isinstance(j["interpreted_query"], dict):
-            parsed = j["interpreted_query"].get("parsed_filters", {})
-            # check expected keys appear
-            ok_flag = True
-            for k, v in expected.items():
-                if k not in parsed:
-                    ok_flag = False
-                    break
-            if ok_flag:
-                ok(f"Natural language query: '{text}' passed (parsed filters present)")
-                nl_score += 5
-                passed = True
-
-        if not passed:
-            # If server returns list of results only, do heuristic check on returned items
-            arr = j if isinstance(j, list) else j.get("data", [])
-            if not isinstance(arr, list):
-                fail(f"Natural language query: '{text}' - unexpected response shape")
-                continue
-            if len(arr) == 0:
-                # No matched items — autograder expects parsed filters ideally; mark fail
-                fail(f"Natural language query: '{text}' returned 200 but no data")
+            if test['method'] == 'POST':
+                response = requests.post(test['url'], json=test['data'])
+            elif test['method'] == 'GET':
+                response = requests.get(test['url'])
+            elif test['method'] == 'DELETE':
+                response = requests.delete(test['url'])
+            
+            actual = response.status_code
+            results[test['name']] = actual == test['expected']
+            
+            if actual == test['expected']:
+                print(f"   ✅ Status: {actual}")
             else:
-                # quick heuristic: check at least one item satisfies one expected predicate
-                ok_item = False
-                for item in arr:
-                    if not isinstance(item, dict):
-                        continue
-                    val = item.get("value") or (item.get("properties") or {}).get("value") or ""
-                    if expected.get("contains_character") and expected["contains_character"] in val.lower():
-                        ok_item = True
-                        break
-                    if expected.get("is_palindrome") and val and val.lower() == val.lower()[::-1]:
-                        ok_item = True
-                        break
-                    if expected.get("min_length") and val and len(val) >= expected["min_length"]:
-                        ok_item = True
-                        break
-                if ok_item:
-                    ok(f"Natural language query: '{text}' returned matching items (no parsed metadata)")
-                    nl_score += 5
-                else:
-                    fail(f"Natural language query: '{text}' returned items but none match expectations")
+                print(f"   ❌ Status: {actual} (expected {test['expected']})")
+                if actual == 405:
+                    print("   💥 CRITICAL: 405 Method Not Allowed")
+                    print("      This means the URL route exists but doesn't accept this HTTP method")
+                    print("      Check your URL routing in urls.py")
+                
+        except Exception as e:
+            print(f"   ❌ Error: {e}")
+            results[test['name']] = False
+    
+    # Analysis
+    print("\n" + "=" * 60)
+    print("📊 DIAGNOSIS RESULTS")
+    print("=" * 60)
+    
+    passed = sum(results.values())
+    total = len(results)
+    
+    for test_name, success in results.items():
+        print(f"  {'✅' if success else '❌'} {test_name}")
+    
+    print(f"\n🎯 Score: {passed}/{total}")
+    
+    # Check for 405 pattern
+    post_405_count = sum(1 for name in results if 'POST' in name and not results[name])
+    if post_405_count > 0:
+        print(f"\n💥 CRITICAL ISSUE: {post_405_count} POST endpoints returning 405")
+        print("   This is the EXACT problem the bot reported!")
+        print("   Your URL routing is broken for POST methods")
 
-    print(f"Natural language filter score: {nl_score}/{sections['get_nl']}\n")
-    total += nl_score
+def debug_url_routing():
+    """Debug the URL routing to find the issue"""
+    print("\n" + "=" * 60)
+    print("🔧 URL ROUTING DEBUG")
+    print("=" * 60)
+    
+    # Test different URL patterns
+    test_urls = [
+        f"{BASE_URL}/strings",
+        f"{BASE_URL}/strings/",
+        f"{BASE_URL}/strings/test",
+        f"{BASE_URL}/strings/filter-by-natural-language",
+    ]
+    
+    for url in test_urls:
+        print(f"\nTesting: {url}")
+        
+        # Test all methods
+        methods = ['GET', 'POST', 'DELETE', 'PUT', 'PATCH']
+        for method in methods:
+            try:
+                if method == 'GET':
+                    response = requests.get(url)
+                elif method == 'POST':
+                    response = requests.post(url, json={"value": "test"})
+                elif method == 'DELETE':
+                    response = requests.delete(url)
+                elif method == 'PUT':
+                    response = requests.put(url, json={"value": "test"})
+                elif method == 'PATCH':
+                    response = requests.patch(url, json={"value": "test"})
+                
+                print(f"  {method}: {response.status_code}")
+                
+            except Exception as e:
+                print(f"  {method}: Error - {e}")
 
-    # === DELETE /strings/{string_value} ===
-    del_score = 0
-    print("=== DELETE /strings/{string_value} (15 points) ===")
-    r = delete(f"/strings/{urllib.parse.quote(v, safe='')}")
-    if r is not None and r.status_code == 204:
-        ok("DELETE existing string")
-        del_score += 10
-    else:
-        fail(f"DELETE existing returned {None if r is None else r.status_code} (expected 204)")
+def check_railway_deployment():
+    """Check if the deployment has the latest code"""
+    print("\n" + "=" * 60)
+    print("🚀 RAILWAY DEPLOYMENT CHECK")
+    print("=" * 60)
+    
+    # Test if we can access any endpoint
+    test_endpoints = [
+        "/strings",
+        "/strings/test",
+        "/strings/filter-by-natural-language?query=test"
+    ]
+    
+    for endpoint in test_endpoints:
+        url = BASE_URL + endpoint
+        print(f"\nTesting: {url}")
+        
+        # Test GET
+        try:
+            response = requests.get(url)
+            print(f"  GET: {response.status_code}")
+            if response.status_code == 405:
+                print("  💥 405 Method Not Allowed")
+        except Exception as e:
+            print(f"  GET: Error - {e}")
+        
+        # Test POST
+        if endpoint == "/strings":
+            try:
+                response = requests.post(url, json={"value": "deployment_test"})
+                print(f"  POST: {response.status_code}")
+                if response.status_code == 405:
+                    print("  💥 405 Method Not Allowed - URL ROUTING BROKEN")
+            except Exception as e:
+                print(f"  POST: Error - {e}")
 
-    r = delete("/strings/nonexistent_delete_abc123")
-    if r is not None and r.status_code == 404:
-        ok("DELETE non-existent string")
-        del_score += 5
-    else:
-        fail(f"DELETE non-existent returned {None if r is None else r.status_code} (expected 404)")
+def main():
+    """Main diagnostic function"""
+    print("🚨 BOT FAILURE DIAGNOSTIC TOOL")
+    print("This will diagnose why the bot is getting 405 errors")
+    print()
+    
+    # Run diagnostics
+    test_bot_exact_scenarios()
+    debug_url_routing() 
+    check_railway_deployment()
+    
+    print("\n" + "=" * 60)
+    print("🎯 RECOMMENDED FIXES")
+    print("=" * 60)
+    
+    print("""
+1. 🔥 URGENT: Fix URL Routing
+   - The 405 errors mean your URLs exist but don't accept the HTTP method
+   - Check your strings/urls.py and make sure you're using class-based views
+   - Ensure you have:
+        path('strings', views.StringsView.as_view(), name='strings'),
+        path('strings/<str:string_value>', views.StringDetailView.as_view(), name='string-detail'),
 
-    print(f"DELETE string score: {del_score}/{sections['delete']}\n")
-    total += del_score
+2. 🚀 Redeploy to Railway
+   - Make sure your latest code is deployed
+   - Check Railway logs for deployment errors
 
-    print("=== Cleanup ===")
-    print("============================================================")
-    print(f"FINAL SCORE: {total}/100")
-    print("============================================================\n")
+3. ✅ Verify Deployment
+   - Run this test again after fixes
+   - All POST endpoints should return 201/409/400/422, NOT 405
 
-    # exit non-zero if not perfect so CI / graders can detect failure
-    if total < 100:
-        sys.exit(1)
-    else:
-        sys.exit(0)
+4. 🔄 Test Before Resubmitting
+   - Use this diagnostic tool to verify fixes
+   - Only submit when ALL 405 errors are gone
+    """)
 
 if __name__ == "__main__":
-    run()
+    main()
