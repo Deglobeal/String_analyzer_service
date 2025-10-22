@@ -1,6 +1,7 @@
 from rest_framework import status
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
+from rest_framework.views import APIView
 from django.shortcuts import get_object_or_404
 from django.db import IntegrityError
 from django.db.models import Q
@@ -10,149 +11,164 @@ from .models import StringAnalysis
 from .serializers import StringAnalysisSerializer
 from .utils import compute_string_properties, parse_natural_language_query
 
-@api_view(['POST'])
-def create_string_analysis(request):
-    """POST /strings - Create and analyze a string."""
+class StringsView(APIView):
+    """Handle both POST and GET for /strings endpoint"""
     
-    # Check if value field exists
-    if 'value' not in request.data:
-        return Response(
-            {'error': 'Missing "value" field'}, 
-            status=status.HTTP_400_BAD_REQUEST
-        )
-    
-    # Check if value is a string
-    if not isinstance(request.data['value'], str):
-        return Response(
-            {'error': 'Invalid data type for "value" (must be string)'}, 
-            status=status.HTTP_422_UNPROCESSABLE_ENTITY
-        )
-    
-    value = request.data['value'].strip()
-    
-    if not value:
-        return Response(
-            {'error': 'String value cannot be empty'}, 
-            status=status.HTTP_400_BAD_REQUEST
-        )
-    
-    # Check if string already exists
-    if StringAnalysis.objects.filter(value=value).exists():
-        return Response(
-            {'error': 'String already exists in the system'}, 
-            status=status.HTTP_409_CONFLICT
-        )
-    
-    # Compute properties
-    properties = compute_string_properties(value)
-    
-    # Create analysis object
-    try:
-        analysis = StringAnalysis.objects.create(
-            id=properties['sha256_hash'],
-            value=value,
-            length=properties['length'],
-            is_palindrome=properties['is_palindrome'],
-            unique_characters=properties['unique_characters'],
-            word_count=properties['word_count'],
-            sha256_hash=properties['sha256_hash'],
-            character_frequency_map=properties['character_frequency_map']
-        )
+    def post(self, request):
+        """POST /strings - Create and analyze a string."""
         
-        serializer = StringAnalysisSerializer(analysis)
-        return Response(serializer.data, status=status.HTTP_201_CREATED)
+        # Check if value field exists
+        if 'value' not in request.data:
+            return Response(
+                {'error': 'Missing "value" field'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
         
-    except IntegrityError:
-        return Response(
-            {'error': 'String already exists in the system'}, 
-            status=status.HTTP_409_CONFLICT
-        )
+        # Check if value is a string
+        if not isinstance(request.data['value'], str):
+            return Response(
+                {'error': 'Invalid data type for "value" (must be string)'}, 
+                status=status.HTTP_422_UNPROCESSABLE_ENTITY
+            )
+        
+        value = request.data['value'].strip()
+        
+        if not value:
+            return Response(
+                {'error': 'String value cannot be empty'}, 
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        
+        # Check if string already exists
+        if StringAnalysis.objects.filter(value=value).exists():
+            return Response(
+                {'error': 'String already exists in the system'}, 
+                status=status.HTTP_409_CONFLICT
+            )
+        
+        # Compute properties
+        properties = compute_string_properties(value)
+        
+        # Create analysis object
+        try:
+            analysis = StringAnalysis.objects.create(
+                id=properties['sha256_hash'],
+                value=value,
+                length=properties['length'],
+                is_palindrome=properties['is_palindrome'],
+                unique_characters=properties['unique_characters'],
+                word_count=properties['word_count'],
+                sha256_hash=properties['sha256_hash'],
+                character_frequency_map=properties['character_frequency_map']
+            )
+            
+            serializer = StringAnalysisSerializer(analysis)
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+            
+        except IntegrityError:
+            return Response(
+                {'error': 'String already exists in the system'}, 
+                status=status.HTTP_409_CONFLICT
+            )
+    
+    def get(self, request):
+        """GET /strings - Get all strings with filtering."""
+        
+        analyses = StringAnalysis.objects.all()
+        
+        # Apply filters
+        filters_applied = {}
+        
+        # Palindrome filter
+        is_palindrome = request.GET.get('is_palindrome')
+        if is_palindrome is not None:
+            if is_palindrome.lower() in ['true', '1', 'yes']:
+                analyses = analyses.filter(is_palindrome=True)
+                filters_applied['is_palindrome'] = True
+            elif is_palindrome.lower() in ['false', '0', 'no']:
+                analyses = analyses.filter(is_palindrome=False)
+                filters_applied['is_palindrome'] = False
+        
+        # Length filters
+        min_length = request.GET.get('min_length')
+        if min_length:
+            try:
+                min_length = int(min_length)
+                analyses = analyses.filter(length__gte=min_length)
+                filters_applied['min_length'] = min_length
+            except ValueError:
+                return Response(
+                    {'error': 'Invalid min_length parameter'}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        
+        max_length = request.GET.get('max_length')
+        if max_length:
+            try:
+                max_length = int(max_length)
+                analyses = analyses.filter(length__lte=max_length)
+                filters_applied['max_length'] = max_length
+            except ValueError:
+                return Response(
+                    {'error': 'Invalid max_length parameter'}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        
+        # Word count filter
+        word_count = request.GET.get('word_count')
+        if word_count:
+            try:
+                word_count = int(word_count)
+                analyses = analyses.filter(word_count=word_count)
+                filters_applied['word_count'] = word_count
+            except ValueError:
+                return Response(
+                    {'error': 'Invalid word_count parameter'}, 
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        
+        # Character containment filter
+        contains_character = request.GET.get('contains_character')
+        if contains_character and len(contains_character) == 1:
+            analyses = analyses.filter(value__icontains=contains_character)
+            filters_applied['contains_character'] = contains_character
+        
+        serializer = StringAnalysisSerializer(analyses, many=True)
+        
+        return Response({
+            'data': serializer.data,
+            'count': analyses.count(),
+            'filters_applied': filters_applied
+        })
 
-@api_view(['GET'])
-def get_string_analysis(request, string_value):
-    """GET /strings/{string_value} - Get specific string analysis."""
+class StringDetailView(APIView):
+    """Handle GET and DELETE for /strings/{string_value} endpoint"""
     
-    try:
-        analysis = get_object_or_404(StringAnalysis, value=string_value)
-        serializer = StringAnalysisSerializer(analysis)
-        return Response(serializer.data)
-    except StringAnalysis.DoesNotExist:
-        return Response(
-            {'error': 'String does not exist in the system'}, 
-            status=status.HTTP_404_NOT_FOUND
-        )
-
-@api_view(['GET'])
-def get_all_strings(request):
-    """GET /strings-list - Get all strings with filtering."""
-    
-    analyses = StringAnalysis.objects.all()
-    
-    # Apply filters
-    filters_applied = {}
-    
-    # Palindrome filter
-    is_palindrome = request.GET.get('is_palindrome')
-    if is_palindrome is not None:
-        if is_palindrome.lower() in ['true', '1', 'yes']:
-            analyses = analyses.filter(is_palindrome=True)
-            filters_applied['is_palindrome'] = True
-        elif is_palindrome.lower() in ['false', '0', 'no']:
-            analyses = analyses.filter(is_palindrome=False)
-            filters_applied['is_palindrome'] = False
-    
-    # Length filters
-    min_length = request.GET.get('min_length')
-    if min_length:
+    def get(self, request, string_value):
+        """GET /strings/{string_value} - Get specific string analysis."""
+        
         try:
-            min_length = int(min_length)
-            analyses = analyses.filter(length__gte=min_length)
-            filters_applied['min_length'] = min_length
-        except ValueError:
+            analysis = get_object_or_404(StringAnalysis, value=string_value)
+            serializer = StringAnalysisSerializer(analysis)
+            return Response(serializer.data)
+        except StringAnalysis.DoesNotExist:
             return Response(
-                {'error': 'Invalid min_length parameter'}, 
-                status=status.HTTP_400_BAD_REQUEST
+                {'error': 'String does not exist in the system'}, 
+                status=status.HTTP_404_NOT_FOUND
             )
     
-    max_length = request.GET.get('max_length')
-    if max_length:
+    def delete(self, request, string_value):
+        """DELETE /strings/{string_value} - Delete string analysis."""
+        
         try:
-            max_length = int(max_length)
-            analyses = analyses.filter(length__lte=max_length)
-            filters_applied['max_length'] = max_length
-        except ValueError:
+            analysis = get_object_or_404(StringAnalysis, value=string_value)
+            analysis.delete()
+            return Response(status=status.HTTP_204_NO_CONTENT)
+        except StringAnalysis.DoesNotExist:
             return Response(
-                {'error': 'Invalid max_length parameter'}, 
-                status=status.HTTP_400_BAD_REQUEST
+                {'error': 'String does not exist in the system'}, 
+                status=status.HTTP_404_NOT_FOUND
             )
-    
-    # Word count filter
-    word_count = request.GET.get('word_count')
-    if word_count:
-        try:
-            word_count = int(word_count)
-            analyses = analyses.filter(word_count=word_count)
-            filters_applied['word_count'] = word_count
-        except ValueError:
-            return Response(
-                {'error': 'Invalid word_count parameter'}, 
-                status=status.HTTP_400_BAD_REQUEST
-            )
-    
-    # Character containment filter - FIXED to use database query
-    contains_character = request.GET.get('contains_character')
-    if contains_character and len(contains_character) == 1:
-        # Use database query instead of Python filtering
-        analyses = analyses.filter(value__icontains=contains_character)
-        filters_applied['contains_character'] = contains_character
-    
-    serializer = StringAnalysisSerializer(analyses, many=True)
-    
-    return Response({
-        'data': serializer.data,
-        'count': analyses.count(),
-        'filters_applied': filters_applied
-    })
 
 @api_view(['GET'])
 def natural_language_filter(request):
@@ -209,18 +225,4 @@ def natural_language_filter(request):
         return Response(
             {'error': f'Unable to parse natural language query: {str(e)}'}, 
             status=status.HTTP_400_BAD_REQUEST
-        )
-
-@api_view(['DELETE'])
-def delete_string_analysis(request, string_value):
-    """DELETE /strings/delete/{string_value} - Delete string analysis."""
-    
-    try:
-        analysis = get_object_or_404(StringAnalysis, value=string_value)
-        analysis.delete()
-        return Response(status=status.HTTP_204_NO_CONTENT)
-    except StringAnalysis.DoesNotExist:
-        return Response(
-            {'error': 'String does not exist in the system'}, 
-            status=status.HTTP_404_NOT_FOUND
         )

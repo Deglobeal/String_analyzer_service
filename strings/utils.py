@@ -9,7 +9,7 @@ def compute_string_properties(value: str) -> Dict[str, Any]:
     # Basic properties
     length = len(value)
     
-    # Palindrome check (case-insensitive)
+    # Palindrome check (case-insensitive) - only consider alphanumeric characters
     cleaned_value = re.sub(r'[^a-zA-Z0-9]', '', value.lower())
     is_palindrome = cleaned_value == cleaned_value[::-1] if cleaned_value else False
     
@@ -36,11 +36,11 @@ def compute_string_properties(value: str) -> Dict[str, Any]:
 
 def parse_natural_language_query(query: str) -> Dict[str, Any]:
     """Parse natural language query into filters."""
-    query = query.lower().strip()
     filters = {}
+    query = query.lower()
     
     # Parse word count
-    if 'single word' in query or 'one word' in query:
+    if 'single word' in query :
         filters['word_count'] = 1
     elif 'two words' in query:
         filters['word_count'] = 2
@@ -64,11 +64,17 @@ def parse_natural_language_query(query: str) -> Dict[str, Any]:
         match = re.search(r'greater than\s+(\d+)', query)
         if match:
             filters['min_length'] = int(match.group(1)) + 1
+    elif 'length' in query and 'less' in query:
+        match = re.search(r'less than\s+(\d+)', query)
+        if match:
+            filters['max_length'] = int(match.group(1)) - 1
     
     # Parse character containment
     char_match = re.search(r'contain[s]?\s+the letter\s+([a-zA-Z])', query)
     if not char_match:
         char_match = re.search(r'contain[s]?\s+([a-zA-Z])', query)
+    if not char_match:
+        char_match = re.search(r'with the letter\s+([a-zA-Z])', query)
     if char_match:
         filters['contains_character'] = char_match.group(1).lower()
     
@@ -83,5 +89,10 @@ def parse_natural_language_query(query: str) -> Dict[str, Any]:
         filters['contains_character'] = 'o'
     elif 'vowel u' in query:
         filters['contains_character'] = 'u'
+    
+    # Handle "all" queries
+    if 'all strings' in query and not filters:
+        # Return empty filters to get all strings
+        pass
     
     return filters
