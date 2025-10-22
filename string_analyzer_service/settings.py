@@ -14,8 +14,6 @@ from pathlib import Path
 import os
 import dj_database_url
 
-APPEND_SLASH = False
-
 
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
@@ -143,3 +141,6 @@ REST_FRAMEWORK = {
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.LimitOffsetPagination',
     'PAGE_SIZE': 50,
 }
+
+
+APPEND_SLASH = False
